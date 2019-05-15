@@ -13,6 +13,7 @@
 use Drupal\apic_api\Api;
 use Drupal\apic_app\Application;
 use Drupal\Core\Config\FileStorage;
+use Drupal\Core\Database\Database;
 use Drupal\Core\Render\Markup;
 use Drupal\Core\Session\UserSession;
 use Drupal\Core\Url;
@@ -564,15 +565,22 @@ function drush_ibm_apim_listen() {
             drush_ibm_apim_updateconfig($content);
             break;
           default:
-            drush_log(dt('There is no drush code to handle the webhook command @cmd', ['@cmd' => $command]), 'error');
+            drush_log(dt('There is no drush code to handle the webhook command @cmd', ['@cmd' => $command]), 'warning');
             break;
         }
       }
       else {
-        drush_log(dt('No content provided for webhook command @cmd', ['@cmd' => $command]), 'error');
+        drush_log(dt('No content provided for webhook command @cmd', ['@cmd' => $command]), 'warning');
       }
       $attempt = 0;
     } catch (Exception $e) {
+      $errors = \Drupal::state()->get('ibm_apim.sync_errors');
+      if ($errors === null) {
+        $errors = [];
+      }
+      $errors[] = ['type'=>'exception', 'message' => $e->getMessage(), 'code' =>$e->getCode(), 'trace' => $e->getTrace(), 'timestamp' => time()];
+      \Drupal::state()->set('ibm_apim.sync_errors', $errors);
+
       drush_log(dt('Attempt @attempt. Caught exception: @message', [
         '@attempt' => $attempt,
         '@message' => $e->getMessage(),
@@ -581,7 +589,7 @@ function drush_ibm_apim_listen() {
 
       if ($attempt > 2) {
         //Only try 3 times then give up.
-        drush_log(dt('Giving up'), 'error');
+        drush_log(dt('Giving up'), 'warning');
         $attempt = 0;
       }
     }
@@ -597,6 +605,7 @@ function drush_ibm_apim_listen() {
 
   drush_log(dt('Drush ibm_apim_listen exiting'), 'success');
   ibm_apim_exit_trace(__FUNCTION__, NULL);
+  exitClean();
 }
 
 /**
@@ -709,8 +718,8 @@ function drush_ibm_apim_content_refresh() {
             }
             $prodList[] = $content['name'] . ':' . $content['version'];
             // have to massage the content so we can reuse the same logic for snapshot as we use for webhooks
-            drush_product_createOrUpdate(['product' => $content], 'ContentRefresh', 'content_refresh');
             \Drupal::state()->set('ibm_apim.content_refresh_products', $prodList);
+            drush_product_createOrUpdate(['product' => $content], 'ContentRefresh', 'content_refresh');
             break;
           case 'api':
             $apiList = \Drupal::state()->get('ibm_apim.content_refresh_apis');
@@ -718,8 +727,8 @@ function drush_ibm_apim_content_refresh() {
               $apiList = [];
             }
             $apiList[] = $content['name'] . ':' . $content['version'];
-            drush_apic_api_createOrUpdate($content, 'ContentRefresh', 'content_refresh');
             \Drupal::state()->set('ibm_apim.content_refresh_apis', $apiList);
+            drush_apic_api_createOrUpdate($content, 'ContentRefresh', 'content_refresh');
             break;
           case 'app':
             $appList = \Drupal::state()->get('ibm_apim.content_refresh_apps');
@@ -727,8 +736,8 @@ function drush_ibm_apim_content_refresh() {
               $appList = [];
             }
             $appList[] = $content['id'];
-            drush_apic_app_createOrUpdate($content, 'ContentRefresh', 'content_refresh');
             \Drupal::state()->set('ibm_apim.content_refresh_apps', $appList);
+            drush_apic_app_createOrUpdate($content, 'ContentRefresh', 'content_refresh');
             break;
           case 'consumer_org':
             $orgList = \Drupal::state()->get('ibm_apim.content_refresh_consumerorgs');
@@ -736,8 +745,8 @@ function drush_ibm_apim_content_refresh() {
               $orgList = [];
             }
             $orgList[] = $content['url'];
-            drush_consumerorg_createOrUpdate($content, 'ContentRefresh', 'content_refresh');
             \Drupal::state()->set('ibm_apim.content_refresh_consumerorgs', $orgList);
+            drush_consumerorg_createOrUpdate($content, 'ContentRefresh', 'content_refresh');
             break;
           case 'user':
             drush_ibm_apim_user_createOrUpdate($content, 'ContentRefresh');
@@ -756,8 +765,8 @@ function drush_ibm_apim_content_refresh() {
               $urList = [];
             }
             $urList[] = $content['url'];
-            drush_ibm_apim_user_registry_update($content, 'content_refresh');
             \Drupal::state()->set('ibm_apim.content_refresh_user_registries', $urList);
+            drush_ibm_apim_user_registry_update($content, 'content_refresh');
             break;
           case 'extension':
             $extList = \Drupal::state()->get('ibm_apim.content_refresh_extensions');
@@ -765,8 +774,8 @@ function drush_ibm_apim_content_refresh() {
               $extList = [];
             }
             $extList[] = $content['name'];
-            drush_ibm_apim_vendor_extension_update($content, 'content_refresh');
             \Drupal::state()->set('ibm_apim.content_refresh_extensions', $extList);
+            drush_ibm_apim_vendor_extension_update($content, 'content_refresh');
             break;
           case 'group':
             $groupList = \Drupal::state()->get('ibm_apim.content_refresh_groups');
@@ -774,8 +783,8 @@ function drush_ibm_apim_content_refresh() {
               $groupList = [];
             }
             $groupList[] = $content['url'];
-            drush_ibm_apim_group_update($content, 'content_refresh');
             \Drupal::state()->set('ibm_apim.content_refresh_extensions', $groupList);
+            drush_ibm_apim_group_update($content, 'content_refresh');
             break;
           case 'subscription':
             $subList = \Drupal::state()->get('ibm_apim.content_refresh_subs');
@@ -804,8 +813,8 @@ function drush_ibm_apim_content_refresh() {
               $tlsList = [];
             }
             $tlsList[] = $content['url'];
-            drush_ibm_apim_tlsprofile_update($content, 'content_refresh');
             \Drupal::state()->set('ibm_apim.content_refresh_tlsprofile_objects', $tlsList);
+            drush_ibm_apim_tlsprofile_update($content, 'content_refresh');
             break;
           case 'oauth_provider':
             break;
@@ -824,8 +833,8 @@ function drush_ibm_apim_content_refresh() {
               $billList = [];
             }
             $billList[] = $content['url'];
-            drush_ibm_apim_billing_update($content, 'content_refresh');
             \Drupal::state()->set('ibm_apim.content_refresh_billing_objects', $billList);
+            drush_ibm_apim_billing_update($content, 'content_refresh');
             break;
           case 'permission':
             $permList = \Drupal::state()->get('ibm_apim.content_refresh_permission_objects');
@@ -833,8 +842,8 @@ function drush_ibm_apim_content_refresh() {
               $permList = [];
             }
             $permList[] = $content['url'];
-            drush_ibm_apim_permission_update($content, 'content_refresh');
             \Drupal::state()->set('ibm_apim.content_refresh_permission_objects', $permList);
+            drush_ibm_apim_permission_update($content, 'content_refresh');
             break;
           case 'analytics_service':
             $analyticsList = \Drupal::state()->get('ibm_apim.content_refresh_analytics_objects');
@@ -842,8 +851,8 @@ function drush_ibm_apim_content_refresh() {
               $analyticsList = [];
             }
             $analyticsList[] = $content['url'];
-            drush_ibm_apim_analytics_update($content, 'content_refresh');
             \Drupal::state()->set('ibm_apim.content_refresh_analytics_objects', $analyticsList);
+            drush_ibm_apim_analytics_update($content, 'content_refresh');
             break;
           case 'close_stream':
             // reached the end of the snapshot payload
@@ -861,9 +870,15 @@ function drush_ibm_apim_content_refresh() {
         unset($content);
       }
       else {
-        drush_log(dt('No content provided for webhook', []), 'error');
+        drush_log(dt('No content provided for webhook', []), 'warning');
       }
     } catch (Exception $e) {
+      $errors = \Drupal::state()->get('ibm_apim.sync_errors');
+      if ($errors === null) {
+        $errors = [];
+      }
+      $errors[] = ['type'=>'exception', 'message' => $e->getMessage(), 'code' =>$e->getCode(), 'trace' => $e->getTrace(), 'timestamp' => time()];
+      \Drupal::state()->set('ibm_apim.sync_errors', $errors);
       drush_log(dt('Caught exception: @message', [
         '@message' => $e->getMessage(),
       ]), 'warning');
@@ -875,6 +890,7 @@ function drush_ibm_apim_content_refresh() {
 
   drush_log(dt('Drush ibm_apim_content_refresh exiting'), 'success');
   ibm_apim_exit_trace(__FUNCTION__, NULL);
+  exitClean();
 }
 
 /**
@@ -2503,5 +2519,14 @@ function drush_ibm_apim_index_directly($indexDirectly, $count) {
       }
     }
   }
+}
+
+/**
+ * Clean Drush exit
+ */
+function exitClean() {
+  drush_set_context('DRUSH_EXECUTION_COMPLETED', TRUE);
+  drush_set_context('DRUSH_EXIT_CODE', DRUSH_SUCCESS);
+  exit(0);
 }
 
