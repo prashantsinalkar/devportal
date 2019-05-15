@@ -187,6 +187,12 @@ class ConsumerOrgService {
         '@orgname' => $name,
         '@username' => $this->currentUser->getAccountName(),
       ]);
+      if (isset($apimResponse->getData()['roles'])) {
+        $org->setRolesFromArray($apimResponse->getData()['roles']);
+      }
+      if (isset($apimResponse->getData()['members'])) {
+        $org->setMembersFromArray($apimResponse->getData()['members']);
+      }
 
       $this->session->set('consumer_organizations', NULL);
       $this->userUtils->loadConsumerorgs();
